@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trapezia-export-markdown"
+version = "1.0.0"
+description = "Convert markdown to PDF, DOCX, or HTML via pandoc + weasyprint. Supports PDF concatenation for clinical/document packet bundling."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Chris Advena"}]
+requires-python = ">=3.10"
+dependencies = [
+    "pypdf>=4.0.0,<7.0.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0.0"]
+
+[project.scripts]
+trapezia-export-markdown = "trapezia_export_markdown.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/OrionAIDev/trapezia-export-markdown"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trapezia_export_markdown"]
