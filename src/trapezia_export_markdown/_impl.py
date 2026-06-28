@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
-__all__ = ["export", "ExportError", "DEFAULT_CSS"]
+__all__ = ["export", "export_dir", "ExportError", "DEFAULT_CSS"]
 
 VALID_FORMATS = {"pdf", "docx", "html"}
 VALID_PAGE_SIZES = {"letter", "a4"}
@@ -237,6 +237,7 @@ def export(
     title: Optional[str] = None,
     embed_pdfs: Optional[Iterable[str | os.PathLike]] = None,
     style: Optional[str | os.PathLike] = None,
+    reference_doc: Optional[str | os.PathLike] = None,
     header: Optional[str] = None,
     footer: Optional[str] = None,
     page_size: str = "letter",
@@ -245,8 +246,29 @@ def export(
 ) -> Path:
     """Convert a markdown file to PDF, DOCX, or HTML.
 
-    Returns the absolute Path of the produced output file.
-    Raises ExportError on any failure.
+    Args:
+        source: Path to the markdown file to convert.
+        to: Target format — one of ``pdf``, ``docx``, ``html``.
+        output: Destination path. Defaults to ``source`` with the format
+            extension swapped.
+        title: Document title. Defaults to the first H1, then the file stem.
+        embed_pdfs: PDFs to append after the main content (PDF output only).
+        style: Custom CSS file for HTML/PDF styling.
+        reference_doc: A ``.docx`` reference document supplying styles for DOCX
+            output (pandoc ``--reference-doc``). Valid only when ``to`` is
+            ``docx``.
+        header: Optional page header text.
+        footer: Optional page footer text.
+        page_size: ``letter`` (default) or ``a4``.
+        no_toc: Suppress the table of contents.
+        quiet: Suppress progress output.
+
+    Returns:
+        The absolute :class:`~pathlib.Path` of the produced output file.
+
+    Raises:
+        ExportError: On any failure (bad format, missing source, missing
+            ``reference_doc``, pandoc failure, etc.).
     """
     fmt = (to or "").lower().strip()
     if fmt not in VALID_FORMATS:
@@ -266,6 +288,14 @@ def export(
 
     if embed_pdfs and fmt != "pdf":
         raise ExportError("--embed-pdfs is only valid when --to pdf")
+
+    ref_doc_path: Optional[Path] = None
+    if reference_doc is not None:
+        if fmt != "docx":
+            raise ExportError("reference_doc is only valid when --to docx")
+        ref_doc_path = Path(reference_doc).expanduser().resolve()
+        if not ref_doc_path.is_file():
+            raise ExportError(f"Reference doc not found: {ref_doc_path}")
 
     pandoc_bin = _check_pandoc()
 
@@ -313,8 +343,9 @@ def export(
                 cmd += ["--css", str(css_path),
                         "--embed-resources", "--standalone"]
         elif fmt == "docx":
-            # docx ignores CSS; could support --reference-doc later
-            pass
+            # docx ignores CSS; styling comes from an optional reference doc.
+            if ref_doc_path is not None:
+                cmd += ["--reference-doc", str(ref_doc_path)]
 
         _run_pandoc(cmd, quiet=quiet)
 
@@ -344,3 +375,68 @@ def export(
         print(msg)
 
     return out
+
+
+def export_dir(
+    source_dir: str | os.PathLike,
+    to: str,
+    output_dir: Optional[str | os.PathLike] = None,
+    *,
+    recursive: bool = False,
+    pattern: str = "*.md",
+    **export_kwargs,
+) -> list[Path]:
+    """Convert every markdown file in a directory to PDF, DOCX, or HTML.
+
+    Each matching file is converted independently via :func:`export`; outputs
+    land in ``output_dir`` named ``<stem>.<ext>``. Subdirectory results are
+    flattened into ``output_dir`` when ``recursive`` is set.
+
+    Args:
+        source_dir: Directory to scan for markdown files.
+        to: Target format — one of ``pdf``, ``docx``, ``html``.
+        output_dir: Where to write outputs. Defaults to ``<source_dir>/export``.
+        recursive: Recurse into subdirectories when ``True``.
+        pattern: Glob pattern for source files (default ``*.md``).
+        **export_kwargs: Forwarded to :func:`export` for every file (e.g.
+            ``title``, ``style``, ``reference_doc``, ``page_size``, ``no_toc``,
+            ``quiet``).
+
+    Returns:
+        A list of produced output :class:`~pathlib.Path` objects, in sorted
+        source order.
+
+    Raises:
+        ExportError: If ``source_dir`` is not a directory, no markdown files
+            match, or any single file fails to convert.
+    """
+    src_dir = Path(source_dir).expanduser().resolve()
+    if not src_dir.is_dir():
+        raise ExportError(
+            f"Source directory not found or not a directory: {src_dir}"
+        )
+
+    globber = src_dir.rglob if recursive else src_dir.glob
+    md_files = sorted(p for p in globber(pattern) if p.is_file())
+    if not md_files:
+        scope = "recursively " if recursive else ""
+        raise ExportError(
+            f"No markdown files {scope}found in {src_dir} (pattern {pattern!r})"
+        )
+
+    fmt = (to or "").lower().strip()
+    out_dir = (
+        Path(output_dir).expanduser().resolve()
+        if output_dir is not None
+        else (src_dir / "export").resolve()
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    results: list[Path] = []
+    for md in md_files:
+        out = out_dir / (md.stem + "." + fmt)
+        try:
+            results.append(export(md, to=to, output=out, **export_kwargs))
+        except ExportError as exc:
+            raise ExportError(f"Failed converting {md}: {exc}") from exc
+    return results

@@ -1,8 +1,9 @@
 # trapezia-export-markdown
 
-Convert markdown files to **PDF**, **DOCX**, or **HTML** with a clean,
-clinician-friendly default style. Supports appending raw PDFs after the main
-content — designed for medical-record packet bundling but generally useful.
+Convert markdown — a single file or a whole folder — to **PDF**, **DOCX**, or
+**HTML** with a clean, clinician-friendly default style. Supports appending raw
+PDFs after the main content (medical-record packet bundling), DOCX
+reference-template styling, and batch directory conversion.
 
 This is the packaged form of the OrionLab `export-markdown` skill, decoupled
 from `sys.path` tricks so it can be `pip install`ed and imported normally.
@@ -10,13 +11,13 @@ from `sys.path` tricks so it can be `pip install`ed and imported normally.
 ## Installation
 
 ```bash
-pip install "git+https://github.com/OrionAIDev/trapezia-export-markdown@v1.0.0"
+pip install "git+https://github.com/OrionAIDev/trapezia-export-markdown@v1.1.0"
 ```
 
 Or pin via `requirements.txt`:
 
 ```
-trapezia-export-markdown @ git+https://github.com/OrionAIDev/trapezia-export-markdown@v1.0.0
+trapezia-export-markdown @ git+https://github.com/OrionAIDev/trapezia-export-markdown@v1.1.0
 ```
 
 ### System requirements (NOT pip-installable)
@@ -82,6 +83,49 @@ export(
 
 Only valid when `to="pdf"`. Other formats raise `ExportError`.
 
+### DOCX reference template (styling)
+
+For branded/styled Word output, pass a `.docx` whose styles pandoc should reuse
+(pandoc `--reference-doc`). Valid only when `to="docx"`.
+
+```python
+from pathlib import Path
+from trapezia_export_markdown import export
+
+export(
+    Path("memo.md"),
+    to="docx",
+    output=Path("memo.docx"),
+    reference_doc=Path("house-style.docx"),
+)
+```
+
+### Batch / whole-folder conversion
+
+`export_dir` converts every markdown file in a directory. Outputs default to a
+`export/` subfolder; pass `output_dir` to redirect. Extra keyword arguments are
+forwarded to `export` for each file.
+
+```python
+from pathlib import Path
+from trapezia_export_markdown import export_dir
+
+# Convert every .md in ./docs to PDF, writing to ./docs/export/
+paths = export_dir(Path("docs"), to="pdf")
+
+# Recurse, into a custom output dir, with a DOCX template
+paths = export_dir(
+    Path("docs"),
+    to="docx",
+    output_dir=Path("rendered"),
+    recursive=True,
+    reference_doc=Path("house-style.docx"),
+)
+```
+
+Raises `ExportError` if the directory is missing or contains no matching files,
+or if any single file fails to convert.
+
 ## Catching failures
 
 All recoverable failures raise `ExportError`:
@@ -109,6 +153,14 @@ trapezia-export-markdown report.md --to html --no-toc --quiet
 trapezia-export-markdown cover.md --to pdf --output packet.pdf \
     --embed-pdfs raw1.pdf raw2.pdf \
     --title "My Packet" --footer "Confidential"
+
+# DOCX with a reference template
+trapezia-export-markdown memo.md --to docx --reference-doc house-style.docx
+
+# Whole folder (source is a directory) — outputs to ./docs/export/
+trapezia-export-markdown docs/ --to pdf
+trapezia-export-markdown docs/ --to docx --recursive --output rendered/ \
+    --template house-style.docx
 ```
 
 Options:
@@ -116,13 +168,16 @@ Options:
 | Flag | Meaning |
 |------|---------|
 | `--to {pdf,docx,html}` | Output format (required) |
-| `--output PATH` | Output path (default: source with extension swapped) |
+| `--output PATH` | Output path, or output **directory** when source is a folder |
 | `--title TEXT` | Document title (default: extracted from first H1) |
 | `--embed-pdfs PATH...` | PDFs to append after main content (PDF only) |
 | `--style PATH` | Custom CSS file (HTML/PDF) |
+| `--reference-doc PATH` / `--template PATH` | Reference `.docx` for styling (DOCX only) |
 | `--header TEXT` | Page header text |
 | `--footer TEXT` | Page footer text |
 | `--page-size {letter,a4}` | Page size (default: letter) |
+| `--recursive` | Recurse into subdirectories (folder source only) |
+| `--pattern GLOB` | Markdown glob (folder source only; default `*.md`) |
 | `--no-toc` | Skip table of contents |
 | `--quiet` | Suppress progress output |
 

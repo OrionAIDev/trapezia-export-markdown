@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from trapezia_export_markdown import export, ExportError
+from trapezia_export_markdown import export, ExportError, export_dir
 
 
 HAVE_PANDOC = shutil.which("pandoc") is not None
@@ -174,3 +174,103 @@ def test_export_missing_source_raises(tmp_path: Path) -> None:
     bogus = tmp_path / "does_not_exist.md"
     with pytest.raises(ExportError, match="not found"):
         export(source=bogus, to="html", output=tmp_path / "x.html", quiet=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 9. DOCX reference-doc (template) styling — ported from export-docs-skill
+# ──────────────────────────────────────────────────────────────────────────────
+@requires_pandoc
+def test_export_docx_with_reference_doc(sample_md: Path, tmp_path: Path) -> None:
+    # A reference doc is itself just a .docx; generate one to use as the template.
+    ref = tmp_path / "template.docx"
+    export(source=sample_md, to="docx", output=ref, quiet=True)
+
+    out = tmp_path / "styled.docx"
+    result = export(
+        source=sample_md, to="docx", output=out, reference_doc=ref, quiet=True
+    )
+    assert result == out.resolve()
+    assert out.is_file()
+    assert out.read_bytes()[:4] == b"PK\x03\x04"
+
+
+def test_reference_doc_with_non_docx_format_raises(sample_md: Path, tmp_path: Path) -> None:
+    ref = tmp_path / "template.docx"
+    ref.write_bytes(b"PK\x03\x04stub")
+    with pytest.raises(ExportError, match="reference_doc"):
+        export(
+            source=sample_md, to="pdf", output=tmp_path / "x.pdf",
+            reference_doc=ref, quiet=True,
+        )
+
+
+def test_reference_doc_missing_file_raises(sample_md: Path, tmp_path: Path) -> None:
+    with pytest.raises(ExportError, match="not found"):
+        export(
+            source=sample_md, to="docx", output=tmp_path / "x.docx",
+            reference_doc=tmp_path / "nope.docx", quiet=True,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 10. export_dir — batch / whole-folder conversion (ported from export-docs-skill)
+# ──────────────────────────────────────────────────────────────────────────────
+def _write_md(p: Path, body: str = "# Doc\n\nbody\n") -> Path:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+@requires_pandoc
+def test_export_dir_basic(tmp_path: Path) -> None:
+    src = tmp_path / "docs"
+    _write_md(src / "a.md")
+    _write_md(src / "b.md")
+
+    results = export_dir(src, to="html", quiet=True)
+
+    assert len(results) == 2
+    # default output dir is <source_dir>/export
+    assert {r.parent for r in results} == {(src / "export").resolve()}
+    assert {r.name for r in results} == {"a.html", "b.html"}
+    assert all(r.is_file() for r in results)
+
+
+@requires_pandoc
+def test_export_dir_custom_output_dir(tmp_path: Path) -> None:
+    src = tmp_path / "docs"
+    _write_md(src / "a.md")
+    out_dir = tmp_path / "rendered"
+
+    results = export_dir(src, to="html", output_dir=out_dir, quiet=True)
+
+    assert len(results) == 1
+    assert results[0] == (out_dir / "a.html").resolve()
+    assert results[0].is_file()
+
+
+def test_export_dir_no_markdown_raises(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(ExportError, match="No markdown"):
+        export_dir(empty, to="html", quiet=True)
+
+
+def test_export_dir_missing_dir_raises(tmp_path: Path) -> None:
+    with pytest.raises(ExportError, match="directory"):
+        export_dir(tmp_path / "nope", to="html", quiet=True)
+
+
+@requires_pandoc
+def test_export_dir_recursive(tmp_path: Path) -> None:
+    src = tmp_path / "docs"
+    _write_md(src / "top.md")
+    _write_md(src / "sub" / "deep.md")
+
+    flat = export_dir(src, to="html", output_dir=tmp_path / "flat", quiet=True)
+    assert {r.name for r in flat} == {"top.html"}
+
+    deep = export_dir(
+        src, to="html", output_dir=tmp_path / "deep", recursive=True, quiet=True
+    )
+    assert {r.name for r in deep} == {"top.html", "deep.html"}
