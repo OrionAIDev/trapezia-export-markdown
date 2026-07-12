@@ -6,4 +6,4 @@ Public API:
 from ._impl import export, export_dir, ExportError
 
 __all__ = ["export", "export_dir", "ExportError"]
-__version__ = "1.1.0"
+__version__ = "1.1.1"

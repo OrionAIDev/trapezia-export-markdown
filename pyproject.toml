@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trapezia-export-markdown"
-version = "1.1.0"
+version = "1.1.1"
 description = "Convert markdown (a file or a whole folder) to PDF, DOCX, or HTML via pandoc + weasyprint. Supports PDF concatenation, DOCX reference-template styling, and batch directory conversion."
 readme = "README.md"
 license = {text = "MIT"}
