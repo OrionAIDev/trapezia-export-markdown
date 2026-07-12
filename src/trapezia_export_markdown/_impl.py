@@ -133,6 +133,59 @@ def _check_pandoc() -> str:
     return p
 
 
+# Pandoc renamed the "inline all external resources into one HTML file" flag from
+# --self-contained to --embed-resources in 2.19. --embed-resources is unknown to
+# older pandoc (e.g. Debian bookworm's 2.17.1.1) and --self-contained is deprecated
+# (but still functional) in newer pandoc, so we pick the flag per detected version.
+_EMBED_RESOURCES_MIN_VERSION = (2, 19)
+
+
+def _parse_pandoc_version(version_output: str) -> tuple[int, ...]:
+    """Parse the version tuple from `pandoc --version` output.
+
+    Args:
+        version_output: The stdout of ``pandoc --version`` (first line is like
+            ``pandoc 2.17.1.1``).
+
+    Returns:
+        The version as a tuple of ints, e.g. ``(2, 17, 1, 1)``. Returns ``(0,)``
+        if no version can be parsed, so callers treat unknown pandoc as "old"
+        and fall back to the broadly-compatible flag.
+    """
+    m = re.search(r"pandoc(?:\.exe)?\s+(\d+(?:\.\d+)*)", version_output)
+    if not m:
+        return (0,)
+    return tuple(int(part) for part in m.group(1).split("."))
+
+
+def _pandoc_version(pandoc_bin: str) -> tuple[int, ...]:
+    """Return the installed pandoc version as a tuple, or ``(0,)`` on failure."""
+    try:
+        res = subprocess.run(
+            [pandoc_bin, "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return (0,)
+    return _parse_pandoc_version(res.stdout or "")
+
+
+def _html_embed_flag(version: tuple[int, ...]) -> str:
+    """Return the pandoc flag that inlines external resources for standalone HTML.
+
+    Args:
+        version: The pandoc version tuple from :func:`_pandoc_version`.
+
+    Returns:
+        ``--embed-resources`` for pandoc >= 2.19, otherwise ``--self-contained``.
+    """
+    if version >= _EMBED_RESOURCES_MIN_VERSION:
+        return "--embed-resources"
+    return "--self-contained"
+
+
 def _extract_h1_title(source: Path) -> Optional[str]:
     """Return the text of the first '# ' line, or None."""
     try:
@@ -340,8 +393,8 @@ def export(
         elif fmt == "html":
             cmd += ["-s"]  # standalone (full HTML doc)
             if css_path is not None:
-                cmd += ["--css", str(css_path),
-                        "--embed-resources", "--standalone"]
+                embed_flag = _html_embed_flag(_pandoc_version(pandoc_bin))
+                cmd += ["--css", str(css_path), embed_flag, "--standalone"]
         elif fmt == "docx":
             # docx ignores CSS; styling comes from an optional reference doc.
             if ref_doc_path is not None:

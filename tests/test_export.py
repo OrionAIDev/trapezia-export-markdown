@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from trapezia_export_markdown import export, ExportError, export_dir
+from trapezia_export_markdown._impl import _parse_pandoc_version, _html_embed_flag
 
 
 HAVE_PANDOC = shutil.which("pandoc") is not None
@@ -78,7 +79,48 @@ def test_export_docx_basic(sample_md: Path, tmp_path: Path) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 3. HTML basic
+# 3. HTML self-contained flag depends on pandoc version
+#    Regression: --embed-resources only exists in pandoc >= 2.19. Debian bookworm
+#    ships 2.17.1.1, where the equivalent flag is --self-contained. Choosing the
+#    wrong flag makes `--to html` fail with "Unknown option --embed-resources".
+# ──────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize(
+    "version_output, expected",
+    [
+        ("pandoc 2.17.1.1\nCompiled with pandoc-types 1.22", (2, 17, 1, 1)),
+        ("pandoc 2.19\n", (2, 19)),
+        ("pandoc 2.19.2", (2, 19, 2)),
+        ("pandoc 3.1.11\nFeatures ...", (3, 1, 11)),
+        ("pandoc.exe 3.1.11\n", (3, 1, 11)),
+    ],
+)
+def test_parse_pandoc_version(version_output: str, expected: tuple) -> None:
+    assert _parse_pandoc_version(version_output) == expected
+
+
+def test_parse_pandoc_version_unparseable_returns_zero() -> None:
+    # Unknown/garbage output must not crash; treated as "very old" so the
+    # broadly-compatible --self-contained flag is chosen.
+    assert _parse_pandoc_version("not pandoc output at all") == (0,)
+
+
+@pytest.mark.parametrize(
+    "version, expected_flag",
+    [
+        ((2, 17, 1, 1), "--self-contained"),  # bookworm — the failing case
+        ((2, 18), "--self-contained"),
+        ((2, 19), "--embed-resources"),  # flag introduced here
+        ((2, 19, 2), "--embed-resources"),
+        ((3, 1, 11), "--embed-resources"),
+        ((0,), "--self-contained"),  # unknown version → safe fallback
+    ],
+)
+def test_html_embed_flag(version: tuple, expected_flag: str) -> None:
+    assert _html_embed_flag(version) == expected_flag
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3b. HTML basic
 # ──────────────────────────────────────────────────────────────────────────────
 @requires_pandoc
 def test_export_html_basic(sample_md: Path, tmp_path: Path) -> None:
