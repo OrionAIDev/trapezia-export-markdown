@@ -8,7 +8,6 @@ import pytest
 
 from trapezia_export_markdown.cli import main
 
-
 HAVE_PANDOC = shutil.which("pandoc") is not None
 requires_pandoc = pytest.mark.skipif(not HAVE_PANDOC, reason="pandoc not installed")
 
