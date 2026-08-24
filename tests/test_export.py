@@ -6,9 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from trapezia_export_markdown import export, ExportError, export_dir
-from trapezia_export_markdown._impl import _parse_pandoc_version, _html_embed_flag
-
+from trapezia_export_markdown import ExportError, export, export_dir
+from trapezia_export_markdown._impl import _html_embed_flag, _parse_pandoc_version
 
 HAVE_PANDOC = shutil.which("pandoc") is not None
 HAVE_PDF_ENGINE = (

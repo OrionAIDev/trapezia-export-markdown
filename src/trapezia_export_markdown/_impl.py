@@ -20,8 +20,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
 
 __all__ = ["export", "export_dir", "ExportError", "DEFAULT_CSS"]
 
@@ -186,7 +186,7 @@ def _html_embed_flag(version: tuple[int, ...]) -> str:
     return "--self-contained"
 
 
-def _extract_h1_title(source: Path) -> Optional[str]:
+def _extract_h1_title(source: Path) -> str | None:
     """Return the text of the first '# ' line, or None."""
     try:
         with source.open("r", encoding="utf-8", errors="replace") as f:
@@ -199,7 +199,7 @@ def _extract_h1_title(source: Path) -> Optional[str]:
     return None
 
 
-def _build_css(page_size: str, custom_style: Optional[Path]) -> Path:
+def _build_css(page_size: str, custom_style: Path | None) -> Path:
     """Write CSS to a temp file and return its path. Caller owns cleanup."""
     if custom_style is not None:
         if not custom_style.is_file():
@@ -243,7 +243,7 @@ def _run_pandoc(cmd: Sequence[str], quiet: bool) -> None:
 def _concat_pdfs(main_pdf: Path, extra_pdfs: Sequence[Path], quiet: bool) -> None:
     """Append extra_pdfs to main_pdf in place, each with a bookmark."""
     try:
-        from pypdf import PdfWriter, PdfReader
+        from pypdf import PdfReader, PdfWriter
     except ImportError as exc:
         raise ExportError(
             "pypdf is required for --embed-pdfs. Install with: pip install pypdf"
@@ -270,7 +270,7 @@ def _concat_pdfs(main_pdf: Path, extra_pdfs: Sequence[Path], quiet: bool) -> Non
     tmp_out.replace(main_pdf)
 
 
-def _page_count(pdf_path: Path) -> Optional[int]:
+def _page_count(pdf_path: Path) -> int | None:
     try:
         from pypdf import PdfReader
         return len(PdfReader(str(pdf_path)).pages)
@@ -285,14 +285,14 @@ def _page_count(pdf_path: Path) -> Optional[int]:
 def export(
     source: str | os.PathLike,
     to: str,
-    output: Optional[str | os.PathLike] = None,
+    output: str | os.PathLike | None = None,
     *,
-    title: Optional[str] = None,
-    embed_pdfs: Optional[Iterable[str | os.PathLike]] = None,
-    style: Optional[str | os.PathLike] = None,
-    reference_doc: Optional[str | os.PathLike] = None,
-    header: Optional[str] = None,
-    footer: Optional[str] = None,
+    title: str | None = None,
+    embed_pdfs: Iterable[str | os.PathLike] | None = None,
+    style: str | os.PathLike | None = None,
+    reference_doc: str | os.PathLike | None = None,
+    header: str | None = None,
+    footer: str | None = None,
     page_size: str = "letter",
     no_toc: bool = False,
     quiet: bool = False,
@@ -342,7 +342,7 @@ def export(
     if embed_pdfs and fmt != "pdf":
         raise ExportError("--embed-pdfs is only valid when --to pdf")
 
-    ref_doc_path: Optional[Path] = None
+    ref_doc_path: Path | None = None
     if reference_doc is not None:
         if fmt != "docx":
             raise ExportError("reference_doc is only valid when --to docx")
@@ -363,7 +363,7 @@ def export(
     effective_title = title or _extract_h1_title(src) or src.stem
 
     # Resolve CSS for html/pdf
-    css_path: Optional[Path] = None
+    css_path: Path | None = None
     cleanup_css = False
     if fmt in {"pdf", "html"}:
         custom = Path(style).expanduser().resolve() if style else None
@@ -433,7 +433,7 @@ def export(
 def export_dir(
     source_dir: str | os.PathLike,
     to: str,
-    output_dir: Optional[str | os.PathLike] = None,
+    output_dir: str | os.PathLike | None = None,
     *,
     recursive: bool = False,
     pattern: str = "*.md",

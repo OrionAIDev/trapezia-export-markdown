@@ -20,7 +20,10 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+# Kept for existing consumers that install ".[test]" for the suite alone.
 test = ["pytest>=8.0.0"]
+# What CI installs: the test suite plus the lint gate.
+dev = ["pytest>=8.0.0", "ruff>=0.6"]
 
 [project.scripts]
 trapezia-export-markdown = "trapezia_export_markdown.cli:main"
@@ -30,3 +33,16 @@ Homepage = "https://github.com/OrionAIDev/trapezia-export-markdown"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/trapezia_export_markdown"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Pinned explicitly rather than inherited from ruff's defaults: those defaults
+# expand between releases (0.16 folded I/RUF/PIE into them), which would turn
+# CI red on a ruff upgrade alone, with no change to this repo.
+select = ["E", "F", "I", "UP", "B"]

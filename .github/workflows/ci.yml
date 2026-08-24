@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      # pandoc is a system binary, not a pip dependency, and every conversion
+      # test is gated on shutil.which("pandoc"). Without this step the suite is
+      # green while exercising almost nothing. weasyprint supplies the PDF
+      # engine; _impl.py prefers wkhtmltopdf but falls back to weasyprint, and
+      # wkhtmltopdf is no longer packaged for current Ubuntu.
+      - name: Install system dependencies (pandoc + PDF engine)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pandoc weasyprint
+      # Fail loudly rather than letting the suite skip its way to green. These
+      # are the exact predicates tests/ uses in its skipif conditions, so a pass
+      # here means the pandoc- and PDF-gated tests really do run. The pandoc
+      # version is printed because the --embed-resources/--self-contained
+      # regression in tests/test_export.py turns on it (>= 2.19).
+      - name: Verify the conversion tests will actually run
+        run: |
+          python -c "import shutil, sys; m = [b for b in ('pandoc', 'weasyprint') if shutil.which(b) is None]; sys.exit('required binaries not on PATH: ' + ', '.join(m)) if m else None"
+          pandoc --version | head -1
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Test (pytest)
+        run: python -m pytest -q
